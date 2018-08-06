@@ -111,10 +111,10 @@ RSpec.describe Philiprehberger::HttpMock do
     it 'returns multiple headers' do
       described_class.stub(:get, 'https://api.example.com/multi')
                      .to_return(status: 200, headers: {
-                       'Content-Type' => 'application/json',
-                       'X-Request-Id' => 'abc123',
-                       'Cache-Control' => 'no-cache'
-                     })
+                                  'Content-Type' => 'application/json',
+                                  'X-Request-Id' => 'abc123',
+                                  'Cache-Control' => 'no-cache'
+                                })
 
       response = described_class.request(:get, 'https://api.example.com/multi')
       expect(response.headers.size).to eq(3)
