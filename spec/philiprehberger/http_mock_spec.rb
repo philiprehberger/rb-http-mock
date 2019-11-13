@@ -313,6 +313,244 @@ RSpec.describe Philiprehberger::HttpMock do
     end
   end
 
+  describe '.to_return_in_sequence' do
+    it 'cycles through responses in order' do
+      described_class.stub(:get, 'https://api.example.com/seq')
+                     .to_return_in_sequence([
+                                              { status: 200, body: 'first' },
+                                              { status: 201, body: 'second' },
+                                              { status: 503, body: 'error' }
+                                            ])
+
+      r1 = described_class.request(:get, 'https://api.example.com/seq')
+      r2 = described_class.request(:get, 'https://api.example.com/seq')
+      r3 = described_class.request(:get, 'https://api.example.com/seq')
+
+      expect(r1.status).to eq(200)
+      expect(r1.body).to eq('first')
+      expect(r2.status).to eq(201)
+      expect(r2.body).to eq('second')
+      expect(r3.status).to eq(503)
+      expect(r3.body).to eq('error')
+    end
+
+    it 'repeats the last response after exhausting the sequence' do
+      described_class.stub(:get, 'https://api.example.com/retry')
+                     .to_return_in_sequence([
+                                              { status: 200, body: 'ok' },
+                                              { status: 503, body: 'error' }
+                                            ])
+
+      described_class.request(:get, 'https://api.example.com/retry')
+      described_class.request(:get, 'https://api.example.com/retry')
+      r3 = described_class.request(:get, 'https://api.example.com/retry')
+      r4 = described_class.request(:get, 'https://api.example.com/retry')
+
+      expect(r3.status).to eq(503)
+      expect(r3.body).to eq('error')
+      expect(r4.status).to eq(503)
+      expect(r4.body).to eq('error')
+    end
+
+    it 'uses default values for omitted response keys' do
+      described_class.stub(:get, 'https://api.example.com/defaults')
+                     .to_return_in_sequence([{ status: 204 }, { body: 'hello' }])
+
+      r1 = described_class.request(:get, 'https://api.example.com/defaults')
+      r2 = described_class.request(:get, 'https://api.example.com/defaults')
+
+      expect(r1.status).to eq(204)
+      expect(r1.body).to eq('')
+      expect(r2.status).to eq(200)
+      expect(r2.body).to eq('hello')
+    end
+
+    it 'supports headers in sequence responses' do
+      described_class.stub(:get, 'https://api.example.com/hseq')
+                     .to_return_in_sequence([
+                                              { status: 200, headers: { 'X-Step' => '1' } },
+                                              { status: 200, headers: { 'X-Step' => '2' } }
+                                            ])
+
+      r1 = described_class.request(:get, 'https://api.example.com/hseq')
+      r2 = described_class.request(:get, 'https://api.example.com/hseq')
+
+      expect(r1.headers['X-Step']).to eq('1')
+      expect(r2.headers['X-Step']).to eq('2')
+    end
+
+    it 'works with a single response in the sequence' do
+      described_class.stub(:get, 'https://api.example.com/single')
+                     .to_return_in_sequence([{ status: 418, body: 'teapot' }])
+
+      r1 = described_class.request(:get, 'https://api.example.com/single')
+      r2 = described_class.request(:get, 'https://api.example.com/single')
+
+      expect(r1.status).to eq(418)
+      expect(r2.status).to eq(418)
+    end
+  end
+
+  describe 'stub verification' do
+    describe 'StubDefinition#call_count and #called?' do
+      it 'starts with call_count of 0 and called? false' do
+        stub = described_class.stub(:get, 'https://api.example.com/track')
+                              .to_return(status: 200)
+
+        expect(stub.call_count).to eq(0)
+        expect(stub.called?).to be(false)
+      end
+
+      it 'increments call_count on each matching request' do
+        stub = described_class.stub(:get, 'https://api.example.com/track')
+                              .to_return(status: 200)
+
+        described_class.request(:get, 'https://api.example.com/track')
+        expect(stub.call_count).to eq(1)
+        expect(stub.called?).to be(true)
+
+        described_class.request(:get, 'https://api.example.com/track')
+        expect(stub.call_count).to eq(2)
+      end
+
+      it 'does not increment call_count for non-matching requests' do
+        stub = described_class.stub(:get, 'https://api.example.com/a')
+                              .to_return(status: 200)
+        described_class.stub(:get, 'https://api.example.com/b')
+                       .to_return(status: 200)
+
+        described_class.request(:get, 'https://api.example.com/b')
+
+        expect(stub.call_count).to eq(0)
+        expect(stub.called?).to be(false)
+      end
+    end
+
+    describe '.verify!' do
+      it 'passes when all stubs have been called' do
+        described_class.stub(:get, 'https://api.example.com/a').to_return(status: 200)
+        described_class.stub(:post, 'https://api.example.com/b').to_return(status: 201)
+
+        described_class.request(:get, 'https://api.example.com/a')
+        described_class.request(:post, 'https://api.example.com/b')
+
+        expect { described_class.verify! }.not_to raise_error
+      end
+
+      it 'raises UnmatchedStubError when a stub was never called' do
+        described_class.stub(:get, 'https://api.example.com/unused').to_return(status: 200)
+
+        expect do
+          described_class.verify!
+        end.to raise_error(Philiprehberger::HttpMock::UnmatchedStubError, /GET.*unused/)
+      end
+
+      it 'lists all uncalled stubs in the error message' do
+        described_class.stub(:get, 'https://api.example.com/one').to_return(status: 200)
+        described_class.stub(:post, 'https://api.example.com/two').to_return(status: 200)
+
+        expect do
+          described_class.verify!
+        end.to raise_error(Philiprehberger::HttpMock::UnmatchedStubError, /GET.*one.*POST.*two/)
+      end
+
+      it 'passes when no stubs are registered' do
+        expect { described_class.verify! }.not_to raise_error
+      end
+
+      it 'works within scope blocks' do
+        described_class.scope do
+          described_class.stub(:get, 'https://api.example.com/scoped').to_return(status: 200)
+
+          expect do
+            described_class.verify!
+          end.to raise_error(Philiprehberger::HttpMock::UnmatchedStubError)
+
+          described_class.request(:get, 'https://api.example.com/scoped')
+          expect { described_class.verify! }.not_to raise_error
+        end
+      end
+    end
+  end
+
+  describe 'callback responses' do
+    it 'generates a dynamic response from a block' do
+      described_class.stub(:post, 'https://api.example.com/echo')
+                     .to_return { |request| { status: 200, body: request.body.upcase } }
+
+      response = described_class.request(:post, 'https://api.example.com/echo', body: 'hello')
+      expect(response.status).to eq(200)
+      expect(response.body).to eq('HELLO')
+    end
+
+    it 'receives the full request object including headers' do
+      described_class.stub(:get, 'https://api.example.com/mirror')
+                     .to_return { |request| { status: 200, body: request.headers['X-Echo'] } }
+
+      response = described_class.request(
+        :get, 'https://api.example.com/mirror',
+        headers: { 'X-Echo' => 'reflected' }
+      )
+      expect(response.body).to eq('reflected')
+    end
+
+    it 'receives the request URL' do
+      described_class.stub(:get, %r{/items/\d+})
+                     .to_return { |request| { status: 200, body: "URL: #{request.url}" } }
+
+      response = described_class.request(:get, 'https://api.example.com/items/42')
+      expect(response.body).to eq('URL: https://api.example.com/items/42')
+    end
+
+    it 'uses default values for omitted response keys' do
+      described_class.stub(:get, 'https://api.example.com/partial')
+                     .to_return { |_request| { body: 'just body' } }
+
+      response = described_class.request(:get, 'https://api.example.com/partial')
+      expect(response.status).to eq(200)
+      expect(response.body).to eq('just body')
+      expect(response.headers).to eq({})
+    end
+
+    it 'supports returning custom headers from the callback' do
+      described_class.stub(:get, 'https://api.example.com/custom')
+                     .to_return { |_request| { status: 200, body: 'ok', headers: { 'X-Dynamic' => 'yes' } } }
+
+      response = described_class.request(:get, 'https://api.example.com/custom')
+      expect(response.headers['X-Dynamic']).to eq('yes')
+    end
+
+    it 'tracks call_count for callback stubs' do
+      stub = described_class.stub(:get, 'https://api.example.com/cb')
+                            .to_return { |_request| { status: 200, body: 'ok' } }
+
+      described_class.request(:get, 'https://api.example.com/cb')
+      described_class.request(:get, 'https://api.example.com/cb')
+
+      expect(stub.call_count).to eq(2)
+      expect(stub.called?).to be(true)
+    end
+
+    it 'can produce different responses based on request data' do
+      described_class.stub(:post, 'https://api.example.com/check')
+                     .to_return do |request|
+        if request.body == 'valid'
+          { status: 200, body: 'accepted' }
+        else
+          { status: 422, body: 'rejected' }
+        end
+      end
+
+      r1 = described_class.request(:post, 'https://api.example.com/check', body: 'valid')
+      r2 = described_class.request(:post, 'https://api.example.com/check', body: 'invalid')
+
+      expect(r1.status).to eq(200)
+      expect(r1.body).to eq('accepted')
+      expect(r2.status).to eq(422)
+      expect(r2.body).to eq('rejected')
+    end
+  end
+
   describe Philiprehberger::HttpMock::Request do
     it 'stores method, url, headers, and body' do
       req = described_class.new(method: :post, url: 'http://example.com', body: 'data', headers: { 'X' => '1' })

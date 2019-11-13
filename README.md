@@ -2,7 +2,11 @@
 
 [![Tests](https://github.com/philiprehberger/rb-http-mock/actions/workflows/ci.yml/badge.svg)](https://github.com/philiprehberger/rb-http-mock/actions/workflows/ci.yml)
 [![Gem Version](https://badge.fury.io/rb/philiprehberger-http_mock.svg)](https://rubygems.org/gems/philiprehberger-http_mock)
+[![GitHub release](https://img.shields.io/github/v/release/philiprehberger/rb-http-mock)](https://github.com/philiprehberger/rb-http-mock/releases)
+[![Last updated](https://img.shields.io/github/last-commit/philiprehberger/rb-http-mock)](https://github.com/philiprehberger/rb-http-mock/commits/main)
 [![License](https://img.shields.io/github/license/philiprehberger/rb-http-mock)](LICENSE)
+[![Bug Reports](https://img.shields.io/github/issues/philiprehberger/rb-http-mock/bug)](https://github.com/philiprehberger/rb-http-mock/issues?q=is%3Aissue+is%3Aopen+label%3Abug)
+[![Feature Requests](https://img.shields.io/github/issues/philiprehberger/rb-http-mock/enhancement)](https://github.com/philiprehberger/rb-http-mock/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement)
 [![Sponsor](https://img.shields.io/badge/sponsor-GitHub%20Sponsors-ec6cb9)](https://github.com/sponsors/philiprehberger)
 
 Lightweight HTTP request stubbing for tests
@@ -30,10 +34,10 @@ gem install philiprehberger-http_mock
 ```ruby
 require "philiprehberger/http_mock"
 
-Philiprehberger::HttpMock.stub(:get, 'https://api.example.com/users')
+Philiprehberger::HttpMock.stub(:get, "https://api.example.com/users")
   .to_return(status: 200, body: '{"users":[]}')
 
-response = Philiprehberger::HttpMock.request(:get, 'https://api.example.com/users')
+response = Philiprehberger::HttpMock.request(:get, "https://api.example.com/users")
 response.status  # => 200
 response.body    # => '{"users":[]}'
 ```
@@ -41,7 +45,7 @@ response.body    # => '{"users":[]}'
 ### POST with Body Matching
 
 ```ruby
-Philiprehberger::HttpMock.stub(:post, 'https://api.example.com/users')
+Philiprehberger::HttpMock.stub(:post, "https://api.example.com/users")
   .with(body: '{"name":"Alice"}')
   .to_return(status: 201, body: '{"id":1}')
 ```
@@ -49,16 +53,54 @@ Philiprehberger::HttpMock.stub(:post, 'https://api.example.com/users')
 ### Header Matching
 
 ```ruby
-Philiprehberger::HttpMock.stub(:get, 'https://api.example.com/data')
-  .with(headers: { 'Authorization' => 'Bearer token123' })
-  .to_return(status: 200, body: 'secret')
+Philiprehberger::HttpMock.stub(:get, "https://api.example.com/data")
+  .with(headers: { "Authorization" => "Bearer token123" })
+  .to_return(status: 200, body: "secret")
+```
+
+### Response Sequences
+
+```ruby
+Philiprehberger::HttpMock.stub(:get, "https://api.example.com/flaky")
+  .to_return_in_sequence([
+    { status: 503, body: "unavailable" },
+    { status: 200, body: "ok" }
+  ])
+
+Philiprehberger::HttpMock.request(:get, "https://api.example.com/flaky").status  # => 503
+Philiprehberger::HttpMock.request(:get, "https://api.example.com/flaky").status  # => 200
+Philiprehberger::HttpMock.request(:get, "https://api.example.com/flaky").status  # => 200 (repeats last)
+```
+
+### Callback Responses
+
+```ruby
+Philiprehberger::HttpMock.stub(:post, "https://api.example.com/echo")
+  .to_return { |request| { status: 200, body: request.body.upcase } }
+
+response = Philiprehberger::HttpMock.request(:post, "https://api.example.com/echo", body: "hello")
+response.body  # => "HELLO"
+```
+
+### Stub Verification
+
+```ruby
+stub = Philiprehberger::HttpMock.stub(:get, "https://api.example.com/data")
+  .to_return(status: 200)
+
+Philiprehberger::HttpMock.request(:get, "https://api.example.com/data")
+
+stub.called?     # => true
+stub.call_count  # => 1
+
+Philiprehberger::HttpMock.verify!  # raises UnmatchedStubError if any stub was never called
 ```
 
 ### Request Recording
 
 ```ruby
-Philiprehberger::HttpMock.stub(:get, 'https://api.example.com/data').to_return(status: 200)
-Philiprehberger::HttpMock.request(:get, 'https://api.example.com/data')
+Philiprehberger::HttpMock.stub(:get, "https://api.example.com/data").to_return(status: 200)
+Philiprehberger::HttpMock.request(:get, "https://api.example.com/data")
 
 requests = Philiprehberger::HttpMock.requests
 requests.length      # => 1
@@ -69,30 +111,36 @@ requests.first.url   # => "https://api.example.com/data"
 
 ```ruby
 Philiprehberger::HttpMock.scope do
-  Philiprehberger::HttpMock.stub(:get, 'https://api.example.com/temp')
+  Philiprehberger::HttpMock.stub(:get, "https://api.example.com/temp")
     .to_return(status: 200)
 
   # Stubs are automatically cleaned up after the block
 end
 ```
 
-### Reset
-
-```ruby
-Philiprehberger::HttpMock.reset!
-```
-
 ## API
+
+### `HttpMock`
 
 | Method | Description |
 |--------|-------------|
-| `HttpMock.stub(method, url)` | Create a request stub, returns a chainable stub definition |
-| `StubDefinition#with(body:, headers:)` | Add matching constraints for body and/or headers |
-| `StubDefinition#to_return(status:, body:, headers:)` | Set the response to return |
-| `HttpMock.request(method, url, body:, headers:)` | Simulate a request against registered stubs |
-| `HttpMock.requests` | Get all recorded requests |
-| `HttpMock.reset!` | Clear all stubs and recorded requests |
-| `HttpMock.scope { ... }` | Execute a block with isolated stubs |
+| `.stub(method, url)` | Create a request stub, returns a chainable stub definition |
+| `.request(method, url, body:, headers:)` | Simulate a request against registered stubs |
+| `.requests` | Get all recorded requests |
+| `.verify!` | Raise `UnmatchedStubError` if any stub was never called |
+| `.reset!` | Clear all stubs and recorded requests |
+| `.scope { ... }` | Execute a block with isolated stubs |
+
+### `StubDefinition`
+
+| Method | Description |
+|--------|-------------|
+| `#with(body:, headers:)` | Add matching constraints for body and/or headers |
+| `#to_return(status:, body:, headers:)` | Set the response to return |
+| `#to_return { \|request\| ... }` | Set a dynamic response callback |
+| `#to_return_in_sequence(responses)` | Set an ordered sequence of responses |
+| `#call_count` | Number of times this stub has been matched |
+| `#called?` | Whether this stub has been matched at least once |
 
 ## Development
 
@@ -102,6 +150,13 @@ bundle exec rspec
 bundle exec rubocop
 ```
 
+## Support
+
+If you find this package useful, consider giving it a star on GitHub — it helps motivate continued maintenance and development.
+
+[![LinkedIn](https://img.shields.io/badge/Philip%20Rehberger-LinkedIn-0A66C2?logo=linkedin)](https://www.linkedin.com/in/philiprehberger)
+[![More packages](https://img.shields.io/badge/more-open%20source%20packages-blue)](https://philiprehberger.com/open-source-packages)
+
 ## License
 
-MIT
+[MIT](LICENSE)

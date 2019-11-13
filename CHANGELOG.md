@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-03-29
+
+### Added
+- Response sequences via `stub.to_return_in_sequence([...])` for cycling through ordered responses
+- Stub verification with `call_count`, `called?`, and `HttpMock.verify!` to detect uncalled stubs
+- Callback responses via `stub.to_return { |request| ... }` for dynamic response generation
+
 ## [0.1.3] - 2026-03-24
 
 ### Fixed
