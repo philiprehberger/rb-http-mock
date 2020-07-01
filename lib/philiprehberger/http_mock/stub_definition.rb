@@ -102,7 +102,7 @@ module Philiprehberger
       #
       # @return [Boolean]
       def called?
-        @call_count > 0
+        @call_count.positive?
       end
 
       # Check if a request matches this stub
