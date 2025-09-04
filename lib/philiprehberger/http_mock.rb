@@ -16,6 +16,9 @@ module Philiprehberger
     # Raised when verify! finds stubs that were never called
     class UnmatchedStubError < Error; end
 
+    # Raised by stubs configured with to_timeout
+    class TimeoutError < Error; end
+
     @registry = Registry.new
 
     class << self
@@ -53,6 +56,28 @@ module Philiprehberger
       def requests
         registry.requests.dup
       end
+
+      # Get the most recently recorded request
+      #
+      # @return [Request, nil] the last recorded request or nil
+      def last_request
+        registry.requests.last
+      end
+
+      # Shorthand for stub(:get, url)
+      def stub_get(url) = stub(:get, url)
+
+      # Shorthand for stub(:post, url)
+      def stub_post(url) = stub(:post, url)
+
+      # Shorthand for stub(:put, url)
+      def stub_put(url) = stub(:put, url)
+
+      # Shorthand for stub(:patch, url)
+      def stub_patch(url) = stub(:patch, url)
+
+      # Shorthand for stub(:delete, url)
+      def stub_delete(url) = stub(:delete, url)
 
       # Verify that all registered stubs were called at least once
       #

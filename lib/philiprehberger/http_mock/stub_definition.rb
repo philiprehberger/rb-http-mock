@@ -25,6 +25,7 @@ module Philiprehberger
         @response = Response.new
         @response_sequence = nil
         @response_callback = nil
+        @raise_exception = nil
         @call_count = 0
       end
 
@@ -59,6 +60,25 @@ module Philiprehberger
         self
       end
 
+      # Configure the stub to raise an exception instead of returning a response
+      #
+      # @param exception [Exception, Class] an exception instance or class to raise
+      # @return [self]
+      def to_raise(exception)
+        @raise_exception = exception
+        @response = nil
+        @response_sequence = nil
+        @response_callback = nil
+        self
+      end
+
+      # Configure the stub to raise a TimeoutError
+      #
+      # @return [self]
+      def to_timeout
+        to_raise(TimeoutError.new("Request timed out: #{@method.upcase} #{@url}"))
+      end
+
       # Set a sequence of responses to cycle through
       #
       # @param responses [Array<Hash>] array of response hashes with :status, :body, :headers keys
@@ -83,7 +103,9 @@ module Philiprehberger
       def response_for(request)
         @call_count += 1
 
-        if @response_callback
+        if @raise_exception
+          raise @raise_exception.is_a?(Class) ? @raise_exception.new : @raise_exception
+        elsif @response_callback
           result = @response_callback.call(request)
           Response.new(
             status: result.fetch(:status, 200),

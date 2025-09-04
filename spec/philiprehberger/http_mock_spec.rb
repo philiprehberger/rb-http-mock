@@ -551,6 +551,104 @@ RSpec.describe Philiprehberger::HttpMock do
     end
   end
 
+  describe '.to_raise' do
+    it 'raises the given exception instance' do
+      described_class.stub(:get, 'https://api.example.com/fail')
+                     .to_raise(RuntimeError.new('boom'))
+
+      expect do
+        described_class.request(:get, 'https://api.example.com/fail')
+      end.to raise_error(RuntimeError, 'boom')
+    end
+
+    it 'raises from an exception class' do
+      described_class.stub(:get, 'https://api.example.com/fail')
+                     .to_raise(RuntimeError)
+
+      expect do
+        described_class.request(:get, 'https://api.example.com/fail')
+      end.to raise_error(RuntimeError)
+    end
+
+    it 'increments call_count before raising' do
+      stub = described_class.stub(:get, 'https://api.example.com/fail')
+                            .to_raise(RuntimeError.new('oops'))
+
+      begin
+        described_class.request(:get, 'https://api.example.com/fail')
+      rescue RuntimeError
+        nil
+      end
+
+      expect(stub.call_count).to eq(1)
+      expect(stub.called?).to be(true)
+    end
+  end
+
+  describe '.to_timeout' do
+    it 'raises TimeoutError' do
+      described_class.stub(:get, 'https://api.example.com/slow')
+                     .to_timeout
+
+      expect do
+        described_class.request(:get, 'https://api.example.com/slow')
+      end.to raise_error(Philiprehberger::HttpMock::TimeoutError, /timed out/)
+    end
+
+    it 'includes method and URL in the message' do
+      described_class.stub(:post, 'https://api.example.com/slow')
+                     .to_timeout
+
+      expect do
+        described_class.request(:post, 'https://api.example.com/slow')
+      end.to raise_error(Philiprehberger::HttpMock::TimeoutError, /POST.*slow/)
+    end
+  end
+
+  describe '.last_request' do
+    it 'returns nil when no requests have been made' do
+      expect(described_class.last_request).to be_nil
+    end
+
+    it 'returns the most recent request' do
+      described_class.stub(:get, 'https://api.example.com/a').to_return(status: 200)
+      described_class.stub(:post, 'https://api.example.com/b').to_return(status: 200)
+
+      described_class.request(:get, 'https://api.example.com/a')
+      described_class.request(:post, 'https://api.example.com/b', body: 'data')
+
+      expect(described_class.last_request.method).to eq(:post)
+      expect(described_class.last_request.body).to eq('data')
+    end
+  end
+
+  describe 'method shortcuts' do
+    it '.stub_get creates a GET stub' do
+      described_class.stub_get('https://api.example.com/g').to_return(status: 200, body: 'get')
+      expect(described_class.request(:get, 'https://api.example.com/g').body).to eq('get')
+    end
+
+    it '.stub_post creates a POST stub' do
+      described_class.stub_post('https://api.example.com/p').to_return(status: 201, body: 'post')
+      expect(described_class.request(:post, 'https://api.example.com/p').body).to eq('post')
+    end
+
+    it '.stub_put creates a PUT stub' do
+      described_class.stub_put('https://api.example.com/u').to_return(status: 200, body: 'put')
+      expect(described_class.request(:put, 'https://api.example.com/u').body).to eq('put')
+    end
+
+    it '.stub_patch creates a PATCH stub' do
+      described_class.stub_patch('https://api.example.com/pa').to_return(status: 200, body: 'patch')
+      expect(described_class.request(:patch, 'https://api.example.com/pa').body).to eq('patch')
+    end
+
+    it '.stub_delete creates a DELETE stub' do
+      described_class.stub_delete('https://api.example.com/d').to_return(status: 204)
+      expect(described_class.request(:delete, 'https://api.example.com/d').status).to eq(204)
+    end
+  end
+
   describe Philiprehberger::HttpMock::Request do
     it 'stores method, url, headers, and body' do
       req = described_class.new(method: :post, url: 'http://example.com', body: 'data', headers: { 'X' => '1' })

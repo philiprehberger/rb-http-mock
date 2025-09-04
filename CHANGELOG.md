@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-04-09
+
+### Added
+- `to_raise(exception)` to simulate errors instead of returning a response
+- `to_timeout` shorthand that raises `TimeoutError`
+- `last_request` for quick access to the most recent recorded request
+- Method shortcuts: `stub_get`, `stub_post`, `stub_put`, `stub_patch`, `stub_delete`
+
 ## [0.2.1] - 2026-03-31
 
 ### Changed
