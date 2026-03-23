@@ -3,6 +3,8 @@
 require 'spec_helper'
 
 RSpec.describe Philiprehberger::HttpMock do
+  before { Philiprehberger::HttpMock.reset! }
+
   it 'has a version number' do
     expect(Philiprehberger::HttpMock::VERSION).not_to be_nil
   end
@@ -45,6 +47,85 @@ RSpec.describe Philiprehberger::HttpMock do
       response = described_class.request(:get, 'https://api.example.com/data')
       expect(response.headers).to eq({ 'Content-Type' => 'application/json' })
     end
+
+    it 'stubs a PUT request' do
+      described_class.stub(:put, 'https://api.example.com/users/1')
+                     .to_return(status: 200, body: '{"updated":true}')
+
+      response = described_class.request(:put, 'https://api.example.com/users/1')
+      expect(response.status).to eq(200)
+      expect(response.body).to eq('{"updated":true}')
+    end
+
+    it 'stubs a DELETE request' do
+      described_class.stub(:delete, 'https://api.example.com/users/1')
+                     .to_return(status: 204, body: '')
+
+      response = described_class.request(:delete, 'https://api.example.com/users/1')
+      expect(response.status).to eq(204)
+      expect(response.body).to eq('')
+    end
+
+    it 'stubs a PATCH request' do
+      described_class.stub(:patch, 'https://api.example.com/users/1')
+                     .to_return(status: 200, body: '{"patched":true}')
+
+      response = described_class.request(:patch, 'https://api.example.com/users/1')
+      expect(response.status).to eq(200)
+    end
+
+    it 'stubs a HEAD request' do
+      described_class.stub(:head, 'https://api.example.com/ping')
+                     .to_return(status: 200, headers: { 'X-Custom' => 'yes' })
+
+      response = described_class.request(:head, 'https://api.example.com/ping')
+      expect(response.status).to eq(200)
+      expect(response.headers['X-Custom']).to eq('yes')
+    end
+
+    it 'stubs an OPTIONS request' do
+      described_class.stub(:options, 'https://api.example.com/cors')
+                     .to_return(status: 200, headers: { 'Allow' => 'GET, POST' })
+
+      response = described_class.request(:options, 'https://api.example.com/cors')
+      expect(response.headers['Allow']).to eq('GET, POST')
+    end
+
+    it 'returns a 404 status code' do
+      described_class.stub(:get, 'https://api.example.com/missing')
+                     .to_return(status: 404, body: 'Not Found')
+
+      response = described_class.request(:get, 'https://api.example.com/missing')
+      expect(response.status).to eq(404)
+      expect(response.body).to eq('Not Found')
+    end
+
+    it 'returns a 500 status code' do
+      described_class.stub(:get, 'https://api.example.com/error')
+                     .to_return(status: 500, body: 'Internal Server Error')
+
+      response = described_class.request(:get, 'https://api.example.com/error')
+      expect(response.status).to eq(500)
+    end
+
+    it 'returns multiple headers' do
+      described_class.stub(:get, 'https://api.example.com/multi')
+                     .to_return(status: 200, headers: {
+                       'Content-Type' => 'application/json',
+                       'X-Request-Id' => 'abc123',
+                       'Cache-Control' => 'no-cache'
+                     })
+
+      response = described_class.request(:get, 'https://api.example.com/multi')
+      expect(response.headers.size).to eq(3)
+      expect(response.headers['X-Request-Id']).to eq('abc123')
+    end
+
+    it 'includes the method and URL in unmatched error message' do
+      expect do
+        described_class.request(:post, 'https://api.example.com/nowhere')
+      end.to raise_error(Philiprehberger::HttpMock::UnmatchedRequestError, /POST.*nowhere/)
+    end
   end
 
   describe '.stub with .with constraints' do
@@ -78,6 +159,29 @@ RSpec.describe Philiprehberger::HttpMock do
       )
       expect(response.body).to eq('secret')
     end
+
+    it 'does not match when required headers are missing' do
+      described_class.stub(:get, 'https://api.example.com/secure')
+                     .with(headers: { 'Authorization' => 'Bearer xyz' })
+                     .to_return(status: 200)
+
+      expect do
+        described_class.request(:get, 'https://api.example.com/secure')
+      end.to raise_error(Philiprehberger::HttpMock::UnmatchedRequestError)
+    end
+
+    it 'matches by both body and headers together' do
+      described_class.stub(:post, 'https://api.example.com/data')
+                     .with(body: '{"ok":true}', headers: { 'Content-Type' => 'application/json' })
+                     .to_return(status: 200, body: 'matched')
+
+      response = described_class.request(
+        :post, 'https://api.example.com/data',
+        body: '{"ok":true}',
+        headers: { 'Content-Type' => 'application/json' }
+      )
+      expect(response.body).to eq('matched')
+    end
   end
 
   describe '.requests' do
@@ -95,6 +199,29 @@ RSpec.describe Philiprehberger::HttpMock do
       expect(requests[1].method).to eq(:post)
       expect(requests[1].body).to eq('data')
     end
+
+    it 'returns an empty array when no requests have been made' do
+      expect(described_class.requests).to eq([])
+    end
+
+    it 'records request headers' do
+      described_class.stub(:get, 'https://api.example.com/h')
+                     .to_return(status: 200)
+
+      described_class.request(:get, 'https://api.example.com/h', headers: { 'Accept' => 'text/html' })
+
+      req = described_class.requests.first
+      expect(req.headers['Accept']).to eq('text/html')
+    end
+
+    it 'returns a copy that does not affect internal state' do
+      described_class.stub(:get, 'https://api.example.com/x').to_return(status: 200)
+      described_class.request(:get, 'https://api.example.com/x')
+
+      requests = described_class.requests
+      requests.clear
+      expect(described_class.requests.length).to eq(1)
+    end
   end
 
   describe '.reset!' do
@@ -108,6 +235,12 @@ RSpec.describe Philiprehberger::HttpMock do
       expect do
         described_class.request(:get, 'https://api.example.com/data')
       end.to raise_error(Philiprehberger::HttpMock::UnmatchedRequestError)
+    end
+
+    it 'can be called multiple times safely' do
+      described_class.reset!
+      described_class.reset!
+      expect(described_class.requests).to be_empty
     end
   end
 
@@ -129,6 +262,19 @@ RSpec.describe Philiprehberger::HttpMock do
       response = described_class.request(:get, 'https://api.example.com/outer')
       expect(response.status).to eq(200)
     end
+
+    it 'restores outer stubs even if block raises' do
+      described_class.stub(:get, 'https://api.example.com/safe').to_return(status: 200)
+
+      begin
+        described_class.scope { raise 'boom' }
+      rescue RuntimeError
+        nil
+      end
+
+      response = described_class.request(:get, 'https://api.example.com/safe')
+      expect(response.status).to eq(200)
+    end
   end
 
   describe 'stub with regex URL' do
@@ -137,6 +283,23 @@ RSpec.describe Philiprehberger::HttpMock do
 
       response = described_class.request(:get, 'https://api.example.com/users/42')
       expect(response.status).to eq(200)
+    end
+
+    it 'does not match URLs that do not fit the regex' do
+      described_class.stub(:get, %r{/users/\d+$}).to_return(status: 200)
+
+      expect do
+        described_class.request(:get, 'https://api.example.com/posts/42')
+      end.to raise_error(Philiprehberger::HttpMock::UnmatchedRequestError)
+    end
+
+    it 'matches multiple URLs with the same regex' do
+      described_class.stub(:get, %r{/items/\d+}).to_return(status: 200, body: 'item')
+
+      r1 = described_class.request(:get, 'https://api.example.com/items/1')
+      r2 = described_class.request(:get, 'https://api.example.com/items/999')
+      expect(r1.body).to eq('item')
+      expect(r2.body).to eq('item')
     end
   end
 
@@ -147,6 +310,38 @@ RSpec.describe Philiprehberger::HttpMock do
 
       response = described_class.request(:get, 'https://api.example.com/data')
       expect(response.body).to eq('second')
+    end
+  end
+
+  describe Philiprehberger::HttpMock::Request do
+    it 'stores method, url, headers, and body' do
+      req = described_class.new(method: :post, url: 'http://example.com', body: 'data', headers: { 'X' => '1' })
+      expect(req.method).to eq(:post)
+      expect(req.url).to eq('http://example.com')
+      expect(req.body).to eq('data')
+      expect(req.headers).to eq({ 'X' => '1' })
+    end
+
+    it 'defaults body to nil and headers to empty hash' do
+      req = described_class.new(method: :get, url: 'http://example.com')
+      expect(req.body).to be_nil
+      expect(req.headers).to eq({})
+    end
+  end
+
+  describe Philiprehberger::HttpMock::Response do
+    it 'defaults to 200 status with empty body and headers' do
+      resp = described_class.new
+      expect(resp.status).to eq(200)
+      expect(resp.body).to eq('')
+      expect(resp.headers).to eq({})
+    end
+
+    it 'accepts custom status, body, and headers' do
+      resp = described_class.new(status: 404, body: 'not found', headers: { 'X' => 'y' })
+      expect(resp.status).to eq(404)
+      expect(resp.body).to eq('not found')
+      expect(resp.headers).to eq({ 'X' => 'y' })
     end
   end
 end
