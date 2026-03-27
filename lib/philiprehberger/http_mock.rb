@@ -72,9 +72,7 @@ module Philiprehberger
 
       private
 
-      def registry
-        @registry
-      end
+      attr_reader :registry
     end
   end
 end
