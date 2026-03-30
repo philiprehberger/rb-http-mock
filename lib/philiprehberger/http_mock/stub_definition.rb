@@ -13,8 +13,8 @@ module Philiprehberger
       # @return [Hash] additional matching criteria
       attr_reader :constraints
 
-      # @return [Response, nil] the response to return
-      attr_reader :response
+      # @return [Integer] number of times this stub has been matched
+      attr_reader :call_count
 
       # @param method [Symbol] the HTTP method to match
       # @param url [String, Regexp] the URL or pattern to match
@@ -23,6 +23,9 @@ module Philiprehberger
         @url = url
         @constraints = {}
         @response = Response.new
+        @response_sequence = nil
+        @response_callback = nil
+        @call_count = 0
       end
 
       # Set additional matching constraints
@@ -41,10 +44,65 @@ module Philiprehberger
       # @param status [Integer] the HTTP status code
       # @param body [String] the response body
       # @param headers [Hash] the response headers
+      # @yield [Request] optional block for dynamic response generation
       # @return [self]
-      def to_return(status: 200, body: '', headers: {})
-        @response = Response.new(status: status, body: body, headers: headers)
+      def to_return(status: 200, body: '', headers: {}, &block)
+        if block
+          @response_callback = block
+          @response = nil
+          @response_sequence = nil
+        else
+          @response = Response.new(status: status, body: body, headers: headers)
+          @response_callback = nil
+          @response_sequence = nil
+        end
         self
+      end
+
+      # Set a sequence of responses to cycle through
+      #
+      # @param responses [Array<Hash>] array of response hashes with :status, :body, :headers keys
+      # @return [self]
+      def to_return_in_sequence(responses)
+        @response_sequence = responses.map do |resp|
+          Response.new(
+            status: resp.fetch(:status, 200),
+            body: resp.fetch(:body, ''),
+            headers: resp.fetch(:headers, {})
+          )
+        end
+        @response = nil
+        @response_callback = nil
+        self
+      end
+
+      # Return the response for this stub, advancing sequence if applicable
+      #
+      # @param request [Request] the matched request
+      # @return [Response] the response to return
+      def response_for(request)
+        @call_count += 1
+
+        if @response_callback
+          result = @response_callback.call(request)
+          Response.new(
+            status: result.fetch(:status, 200),
+            body: result.fetch(:body, ''),
+            headers: result.fetch(:headers, {})
+          )
+        elsif @response_sequence
+          index = [@call_count - 1, @response_sequence.length - 1].min
+          @response_sequence[index]
+        else
+          @response
+        end
+      end
+
+      # Whether this stub has been called at least once
+      #
+      # @return [Boolean]
+      def called?
+        @call_count > 0
       end
 
       # Check if a request matches this stub

@@ -13,6 +13,9 @@ module Philiprehberger
     # Unexpected request error raised when no stub matches
     class UnmatchedRequestError < Error; end
 
+    # Raised when verify! finds stubs that were never called
+    class UnmatchedStubError < Error; end
+
     @registry = Registry.new
 
     class << self
@@ -41,7 +44,7 @@ module Philiprehberger
         matched = registry.find_stub(req)
         raise UnmatchedRequestError, "No stub matched #{method.upcase} #{url}" unless matched
 
-        matched.response
+        matched.response_for(req)
       end
 
       # Get all recorded requests
@@ -49,6 +52,18 @@ module Philiprehberger
       # @return [Array<Request>] the recorded requests
       def requests
         registry.requests.dup
+      end
+
+      # Verify that all registered stubs were called at least once
+      #
+      # @return [void]
+      # @raise [UnmatchedStubError] if any stub was never called
+      def verify!
+        uncalled = registry.stubs.reject(&:called?)
+        return if uncalled.empty?
+
+        descriptions = uncalled.map { |s| "#{s.method.upcase} #{s.url}" }
+        raise UnmatchedStubError, "The following stubs were never called: #{descriptions.join(', ')}"
       end
 
       # Clear all stubs and recorded requests
