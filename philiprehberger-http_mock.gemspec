@@ -10,7 +10,7 @@ Gem::Specification.new do |spec|
 
   spec.summary = 'Lightweight HTTP request stubbing for tests'
   spec.description = 'Stub HTTP requests in tests with a fluent API for matching methods, URLs, ' \
-                       'headers, and bodies. Includes request recording and scoped isolation.'
+                     'headers, and bodies. Includes request recording and scoped isolation.'
   spec.homepage = 'https://philiprehberger.com/open-source-packages/ruby/philiprehberger-http_mock'
   spec.license = 'MIT'
 
