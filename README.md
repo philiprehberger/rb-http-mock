@@ -77,6 +77,39 @@ response = Philiprehberger::HttpMock.request(:post, "https://api.example.com/ech
 response.body  # => "HELLO"
 ```
 
+### Error Simulation
+
+```ruby
+Philiprehberger::HttpMock.stub(:get, "https://api.example.com/fail")
+  .to_raise(RuntimeError.new("connection refused"))
+
+Philiprehberger::HttpMock.stub(:post, "https://api.example.com/slow")
+  .to_timeout
+# raises Philiprehberger::HttpMock::TimeoutError
+```
+
+### Method Shortcuts
+
+```ruby
+Philiprehberger::HttpMock.stub_get("https://api.example.com/users")
+  .to_return(status: 200, body: '[]')
+
+Philiprehberger::HttpMock.stub_post("https://api.example.com/users")
+  .with(body: '{"name":"Alice"}')
+  .to_return(status: 201)
+```
+
+Also available: `stub_put`, `stub_patch`, `stub_delete`.
+
+### Last Request
+
+```ruby
+Philiprehberger::HttpMock.stub_post("https://api.example.com/users").to_return(status: 201)
+Philiprehberger::HttpMock.request(:post, "https://api.example.com/users", body: '{"name":"Bob"}')
+
+Philiprehberger::HttpMock.last_request.body  # => '{"name":"Bob"}'
+```
+
 ### Stub Verification
 
 ```ruby
@@ -120,8 +153,14 @@ end
 | Method | Description |
 |--------|-------------|
 | `.stub(method, url)` | Create a request stub, returns a chainable stub definition |
+| `.stub_get(url)` | Shorthand for `.stub(:get, url)` |
+| `.stub_post(url)` | Shorthand for `.stub(:post, url)` |
+| `.stub_put(url)` | Shorthand for `.stub(:put, url)` |
+| `.stub_patch(url)` | Shorthand for `.stub(:patch, url)` |
+| `.stub_delete(url)` | Shorthand for `.stub(:delete, url)` |
 | `.request(method, url, body:, headers:)` | Simulate a request against registered stubs |
 | `.requests` | Get all recorded requests |
+| `.last_request` | Get the most recently recorded request |
 | `.verify!` | Raise `UnmatchedStubError` if any stub was never called |
 | `.reset!` | Clear all stubs and recorded requests |
 | `.scope { ... }` | Execute a block with isolated stubs |
@@ -134,6 +173,8 @@ end
 | `#to_return(status:, body:, headers:)` | Set the response to return |
 | `#to_return { \|request\| ... }` | Set a dynamic response callback |
 | `#to_return_in_sequence(responses)` | Set an ordered sequence of responses |
+| `#to_raise(exception)` | Raise an exception instead of returning a response |
+| `#to_timeout` | Raise `TimeoutError` simulating a request timeout |
 | `#call_count` | Number of times this stub has been matched |
 | `#called?` | Whether this stub has been matched at least once |
 
