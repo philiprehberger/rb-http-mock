@@ -622,6 +622,50 @@ RSpec.describe Philiprehberger::HttpMock do
     end
   end
 
+  describe '.requests_for' do
+    it 'returns matching requests in recording order' do
+      described_class.stub(:get,  'https://api.example.com/users').to_return(status: 200)
+      described_class.stub(:post, 'https://api.example.com/users').to_return(status: 201)
+
+      described_class.request(:get,  'https://api.example.com/users')
+      described_class.request(:post, 'https://api.example.com/users', body: 'a')
+      described_class.request(:post, 'https://api.example.com/users', body: 'b')
+
+      result = described_class.requests_for(:post, 'https://api.example.com/users')
+      expect(result.length).to eq(2)
+      expect(result.map(&:body)).to eq(%w[a b])
+    end
+
+    it 'returns an empty array when no requests match' do
+      described_class.stub(:get, 'https://api.example.com/users').to_return(status: 200)
+      described_class.request(:get, 'https://api.example.com/users')
+
+      expect(described_class.requests_for(:post, 'https://api.example.com/users')).to eq([])
+    end
+
+    it 'returns an empty array when no requests have been recorded' do
+      expect(described_class.requests_for(:get, 'https://api.example.com/anything')).to eq([])
+    end
+
+    it 'normalizes the method case' do
+      described_class.stub(:get, 'https://api.example.com/x').to_return(status: 200)
+      described_class.request(:get, 'https://api.example.com/x')
+
+      expect(described_class.requests_for('GET', 'https://api.example.com/x').length).to eq(1)
+      expect(described_class.requests_for(:GET,  'https://api.example.com/x').length).to eq(1)
+    end
+
+    it 'distinguishes URLs that differ' do
+      described_class.stub(:get, 'https://api.example.com/a').to_return(status: 200)
+      described_class.stub(:get, 'https://api.example.com/b').to_return(status: 200)
+      described_class.request(:get, 'https://api.example.com/a')
+      described_class.request(:get, 'https://api.example.com/b')
+
+      expect(described_class.requests_for(:get, 'https://api.example.com/a').length).to eq(1)
+      expect(described_class.requests_for(:get, 'https://api.example.com/b').length).to eq(1)
+    end
+  end
+
   describe 'method shortcuts' do
     it '.stub_get creates a GET stub' do
       described_class.stub_get('https://api.example.com/g').to_return(status: 200, body: 'get')

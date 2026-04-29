@@ -64,6 +64,23 @@ module Philiprehberger
         registry.requests.last
       end
 
+      # Get all recorded requests matching a method and URL
+      #
+      # The method comparison normalizes case (`:GET` matches `:get`). The URL
+      # comparison is exact against the recorded `request.url` value, so it
+      # mirrors how the stub registry stores incoming requests. Returns an
+      # empty Array when no requests match.
+      #
+      # @param method [Symbol, String] the HTTP method to filter on
+      # @param url [String] the URL to filter on
+      # @return [Array<Request>] matching requests in recording order
+      def requests_for(method, url)
+        target_method = method.to_s.downcase.to_sym
+        registry.requests.select do |req|
+          req.method.to_s.downcase.to_sym == target_method && req.url == url
+        end
+      end
+
       # Shorthand for stub(:get, url)
       def stub_get(url) = stub(:get, url)
 

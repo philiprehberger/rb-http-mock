@@ -101,6 +101,21 @@ Philiprehberger::HttpMock.stub_post("https://api.example.com/users")
 
 Also available: `stub_put`, `stub_patch`, `stub_delete`.
 
+### Filtered Requests
+
+Filter recorded requests by method and URL:
+
+```ruby
+Philiprehberger::HttpMock.stub_post("https://api.example.com/users").to_return(status: 201)
+
+Philiprehberger::HttpMock.request(:post, "https://api.example.com/users", body: '{"name":"Alice"}')
+Philiprehberger::HttpMock.request(:post, "https://api.example.com/users", body: '{"name":"Bob"}')
+
+posts = Philiprehberger::HttpMock.requests_for(:post, "https://api.example.com/users")
+posts.length            # => 2
+posts.map(&:body)       # => ['{"name":"Alice"}', '{"name":"Bob"}']
+```
+
 ### Last Request
 
 ```ruby
@@ -160,6 +175,7 @@ end
 | `.stub_delete(url)` | Shorthand for `.stub(:delete, url)` |
 | `.request(method, url, body:, headers:)` | Simulate a request against registered stubs |
 | `.requests` | Get all recorded requests |
+| `.requests_for(method, url)` | Get all recorded requests matching a method and URL (case-insensitive method) |
 | `.last_request` | Get the most recently recorded request |
 | `.verify!` | Raise `UnmatchedStubError` if any stub was never called |
 | `.reset!` | Clear all stubs and recorded requests |
